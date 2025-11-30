@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   # -------------------------------
   # Redis
@@ -27,7 +29,7 @@ services:
       - backend
 
   # -------------------------------
-  # Main App Database (Postgres for LXP)
+  # Main App DB (Postgres)
   # -------------------------------
   postgres_db:
     image: postgres:15
@@ -38,7 +40,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5433:5432" # avoid clash with Keycloak DB
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -57,7 +59,7 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
-      - "${PGADMIN_PORT:-5050}:80"
+      - "5050:80"
     depends_on:
       - postgres_db
     volumes:
@@ -66,7 +68,7 @@ services:
       - backend
 
   # -------------------------------
-  # MinIO (Object Storage)
+  # MinIO
   # -------------------------------
   minio:
     image: minio/minio:latest
@@ -80,8 +82,8 @@ services:
       - "9001:9001"
     command: server /data --console-address ":9001"
     volumes:
-      - ./data/minio_data:/data
-      - ./data/minio_config:/root/.minio
+      - minio_data:/data
+      - minio_config:/root/.minio
     networks:
       - backend
     healthcheck:
@@ -91,7 +93,7 @@ services:
       retries: 3
 
   # -------------------------------
-  # Keycloak DB (Separate Postgres)
+  # Keycloak DB
   # -------------------------------
   keycloak_postgres:
     image: postgres:15
@@ -107,27 +109,20 @@ services:
       - keycloak_pg_data:/var/lib/postgresql/data
     networks:
       - auth_net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # -------------------------------
-  # Keycloak Server (SSO)
+  # Keycloak
   # -------------------------------
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.4
     container_name: keycloak
     restart: always
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KEYCLOAK_DATABASE_HOST: keycloak_postgres
-      KEYCLOAK_DATABASE_PORT: 5432
-      KEYCLOAK_DATABASE_USER: ${KEYCLOAK_DB_USER}
-      KEYCLOAK_DATABASE_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
-      KEYCLOAK_DATABASE_NAME: ${KEYCLOAK_DB_NAME}
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak_postgres
+      KC_DB_URL_PORT: 5432
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
     ports:
       - "8080:8080"
     depends_on:
@@ -138,7 +133,7 @@ services:
       - auth_net
 
   # -------------------------------
-  # Backend Node.js App
+  # Backend App
   # -------------------------------
   backend_app:
     build: .
@@ -165,25 +160,6 @@ services:
       - backend
       - auth_net
 
-
-  # -------------------------------
-  # Jenkins Service — correct place
-  # -------------------------------
-  jenkins:
-    image: jenkins/jenkins:lts
-    container_name: jenkins
-    restart: always
-    user: root
-    ports:
-      - "8081:8080"
-      - "50000:50000"
-    volumes:
-      - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - backend
-      - auth_net      
-
 # -------------------------------
 # Volumes
 # -------------------------------
@@ -194,7 +170,8 @@ volumes:
   pgadmin_data:
   keycloak_pg_data:
   keycloak_data:
-  jenkins_home:
+  minio_data:
+  minio_config:
 
 # -------------------------------
 # Networks
@@ -204,7 +181,3 @@ networks:
     driver: bridge
   auth_net:
     driver: bridge
-
-
-
-  
