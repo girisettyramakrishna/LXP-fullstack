@@ -3,8 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_USERNAME = 'psmdocker123'
-    
-        KUBECONFIG = 'C:\\Users\\ADMIN\\.kube\\config'
+        KUBECONFIG = '/var/jenkins_home/.kube/config'
     }
 
     stages {
@@ -18,7 +17,7 @@ pipeline {
         stage('Build Frontend') {
             steps {
                 dir('frontend') {
-                    bat "docker build -t %DOCKERHUB_USERNAME%/frontend_app:latest ."
+                    sh "docker build -t $DOCKERHUB_USERNAME/frontend_app:latest ."
                 }
             }
         }
@@ -26,26 +25,24 @@ pipeline {
         stage('Build Backend') {
             steps {
                 dir('backend') {
-                    bat "docker build -t %DOCKERHUB_USERNAME%/backend_app:latest ."
+                    sh 'docker build -t $DOCKERHUB_USERNAME/backend_app:latest .'
                 }
             }
         }
 
         stage('Push Images') {
             steps {
-                
-                bat "docker push %DOCKERHUB_USERNAME%/frontend_app:latest"
-                bat "docker push %DOCKERHUB_USERNAME%/backend_app:latest"
+                sh "docker push $DOCKERHUB_USERNAME/frontend_app:latest"
+                sh "docker push $DOCKERHUB_USERNAME/backend_app:latest"
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                bat "kubectl apply -f k8s -n lxp"
-                bat "kubectl rollout restart deployment backend -n lxp"
-                bat "kubectl rollout restart deployment frontend -n lxp"
+                sh "kubectl apply -f k8s -n lxp"
+                sh "kubectl rollout restart deployment backend -n lxp"
+                sh "kubectl rollout restart deployment frontend -n lxp"
             }
         }
     }
 }
-
