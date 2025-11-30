@@ -1,0 +1,452 @@
+###########################################
+# NAMESPACE
+###########################################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lxp
+
+---
+###########################################
+# POSTGRES
+###########################################
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: lxp
+type: Opaque
+data:
+  POSTGRES_PASSWORD: cG9zdGdyZXMxMjM=
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: lxp
+data:
+  POSTGRES_DB: lxpdb
+  POSTGRES_USER: admin
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_USER
+          ports:
+            - containerPort: 5432
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: lxp
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+###########################################
+# PGADMIN
+###########################################
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+        - name: pgadmin
+          image: dpage/pgadmin4
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: admin@admin.com
+            - name: PGADMIN_DEFAULT_PASSWORD
+              value: admin123
+          ports:
+            - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: lxp
+spec:
+  type: NodePort
+  selector:
+    app: pgadmin
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30020
+
+###########################################
+# REDIS
+###########################################
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:alpine
+          ports:
+            - containerPort: 6379
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: lxp
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+
+###########################################
+# REDISINSIGHT
+###########################################
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redisinsight
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redisinsight
+  template:
+    metadata:
+      labels:
+        app: redisinsight
+    spec:
+      containers:
+        - name: redisinsight
+          image: redis/redisinsight:latest
+          ports:
+            - containerPort: 5540
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redisinsight
+  namespace: lxp
+spec:
+  type: NodePort
+  selector:
+    app: redisinsight
+  ports:
+    - port: 5540
+      targetPort: 5540
+      nodePort: 30030
+
+###########################################
+# MINIO
+###########################################
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-secret
+  namespace: lxp
+type: Opaque
+data:
+  MINIO_ROOT_USER: bWluaW9hZG1pbg==
+  MINIO_ROOT_PASSWORD: bWluaW9hZG1pbg==
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: lxp
+spec:
+  type: NodePort
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+      nodePort: 30090
+    - name: console
+      port: 9001
+      targetPort: 9001
+      nodePort: 30091
+
+
+###########################################
+# KEYCLOAK (Simple Dev Mode)
+###########################################
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:23.0
+          args: ["start-dev"]
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: admin123
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: lxp
+spec:
+  type: NodePort
+  selector:
+    app: keycloak
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30050
+
+###########################################
+# BACKEND
+###########################################
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: lxp
+data:
+  PORT: "5000"
+  DB_HOST: "postgres"
+  DB_NAME: "lxpdb"
+  DB_USER: "admin"
+  REDIS_HOST: "redis"
+  MINIO_BUCKET: "lxp-bucket"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secrets
+  namespace: lxp
+type: Opaque
+data:
+  DB_PASSWORD: YWRtaW4xMjM=
+  JWT_SECRET: bXlqd3RzZWNyZXQ=
+  MINIO_ACCESS_KEY: bWluaW9hZG1pbg==
+  MINIO_SECRET_KEY: bWluaW9hZG1pbg==
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-app
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-app
+  template:
+    metadata:
+      labels:
+        app: backend-app
+    spec:
+      containers:
+        - name: backend
+          image: psmdocker123/backend_app:latest
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-app
+  namespace: lxp
+spec:
+  type: NodePort
+  selector:
+    app: backend-app
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30060
+
+###########################################
+# FRONTEND (Vite Dev Server)
+###########################################
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: lxp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: psmdocker123/frontend_app:latest
+          ports:
+            - containerPort: 5173
+          env:
+            - name: CHOKIDAR_USEPOLLING
+              value: "true"
+            - name: NODE_ENV
+              value: development
+          command: ["npm", "run", "dev", "--", "--host"]  # Exposes Vite on 0.0.0.0
+          workingDir: /app
+          volumeMounts:
+            - name: frontend-src
+              mountPath: /app
+            - name: node-modules
+              mountPath: /app/node_modules
+      volumes:
+        - name: frontend-src
+          hostPath:
+            path: /mnt/c/Users/ADMIN/Desktop/LXP_Fullstack(2)/frontend
+        - name: node-modules
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: lxp
+spec:
+  type: NodePort
+  selector:
+    app: frontend
+  ports:
+    - port: 5173
+      targetPort: 5173
+      nodePort: 30070

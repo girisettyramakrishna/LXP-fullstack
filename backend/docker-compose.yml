@@ -1,0 +1,210 @@
+services:
+  # -------------------------------
+  # Redis
+  # -------------------------------
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_volume_data:/data
+    networks:
+      - backend
+
+  redis_insight:
+    image: redislabs/redisinsight:1.14.0
+    container_name: redis_insight
+    restart: always
+    ports:
+      - "8001:8001"
+    volumes:
+      - redis_insight_volume_data:/db
+    depends_on:
+      - redis
+    networks:
+      - backend
+
+  # -------------------------------
+  # Main App Database (Postgres for LXP)
+  # -------------------------------
+  postgres_db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5433:5432" # avoid clash with Keycloak DB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      - postgres_db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - backend
+
+  # -------------------------------
+  # MinIO (Object Storage)
+  # -------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio_data:/data
+      - ./data/minio_config:/root/.minio
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  # -------------------------------
+  # Keycloak DB (Separate Postgres)
+  # -------------------------------
+  keycloak_postgres:
+    image: postgres:15
+    container_name: keycloak_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - keycloak_pg_data:/var/lib/postgresql/data
+    networks:
+      - auth_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------
+  # Keycloak Server (SSO)
+  # -------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.4
+    container_name: keycloak
+    restart: always
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_DATABASE_HOST: keycloak_postgres
+      KEYCLOAK_DATABASE_PORT: 5432
+      KEYCLOAK_DATABASE_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DATABASE_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_DATABASE_NAME: ${KEYCLOAK_DB_NAME}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - keycloak_postgres
+    volumes:
+      - keycloak_data:/bitnami/keycloak
+    networks:
+      - auth_net
+
+  # -------------------------------
+  # Backend Node.js App
+  # -------------------------------
+  backend_app:
+    build: .
+    container_name: backend_app
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    command: npm start
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - backend
+      - auth_net
+
+
+  # -------------------------------
+  # Jenkins Service — correct place
+  # -------------------------------
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    restart: always
+    user: root
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - backend
+      - auth_net      
+
+# -------------------------------
+# Volumes
+# -------------------------------
+volumes:
+  redis_volume_data:
+  redis_insight_volume_data:
+  pgdata:
+  pgadmin_data:
+  keycloak_pg_data:
+  keycloak_data:
+  jenkins_home:
+
+# -------------------------------
+# Networks
+# -------------------------------
+networks:
+  backend:
+    driver: bridge
+  auth_net:
+    driver: bridge
+
+
+
+  
