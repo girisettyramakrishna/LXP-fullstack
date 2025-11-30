@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // Add environment variables if needed
+        // Set Node.js path if needed
         NODE_HOME = 'C:\\Program Files\\nodejs'
         PATH = "${env.NODE_HOME};${env.PATH}"
     }
@@ -15,12 +15,27 @@ pipeline {
             }
         }
 
+        stage('Install Frontend Dependencies') {
+            steps {
+                dir('frontend') {
+                    // Clean install to ensure all packages including devDependencies
+                    bat 'npm ci'
+                }
+            }
+        }
+
         stage('Build Frontend') {
             steps {
                 dir('frontend') {
-                    // Use bat instead of sh for Windows
-                    bat 'npm install'
                     bat 'npm run build'
+                }
+            }
+        }
+
+        stage('Install Backend Dependencies') {
+            steps {
+                dir('backend') {
+                    bat 'npm ci'
                 }
             }
         }
@@ -28,15 +43,14 @@ pipeline {
         stage('Build Backend') {
             steps {
                 dir('backend') {
-                    bat 'npm install'
                     bat 'npm run build'
                 }
             }
         }
 
-        stage('Push Images') {
+        stage('Push Docker Images') {
             steps {
-                // Example Docker build & push (adjust names)
+                // Build and push Docker images
                 bat 'docker build -t lxp-frontend:latest frontend'
                 bat 'docker build -t lxp-backend:latest backend'
                 bat 'docker push lxp-frontend:latest'
