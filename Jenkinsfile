@@ -2,22 +2,25 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USERNAME = 'psmdocker123'
-        KUBECONFIG = '/var/jenkins_home/.kube/config'
+        // Add environment variables if needed
+        NODE_HOME = 'C:\\Program Files\\nodejs'
+        PATH = "${env.NODE_HOME};${env.PATH}"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                git url: 'https://github.com/girisettyramakrishna/LXP_fullstack.git', branch: 'master'
+                checkout scm
             }
         }
 
         stage('Build Frontend') {
             steps {
                 dir('frontend') {
-                    sh "docker build -t $DOCKERHUB_USERNAME/frontend_app:latest ."
+                    // Use bat instead of sh for Windows
+                    bat 'npm install'
+                    bat 'npm run build'
                 }
             }
         }
@@ -25,24 +28,35 @@ pipeline {
         stage('Build Backend') {
             steps {
                 dir('backend') {
-                    sh 'docker build -t $DOCKERHUB_USERNAME/backend_app:latest .'
+                    bat 'npm install'
+                    bat 'npm run build'
                 }
             }
         }
 
         stage('Push Images') {
             steps {
-                sh "docker push $DOCKERHUB_USERNAME/frontend_app:latest"
-                sh "docker push $DOCKERHUB_USERNAME/backend_app:latest"
+                // Example Docker build & push (adjust names)
+                bat 'docker build -t lxp-frontend:latest frontend'
+                bat 'docker build -t lxp-backend:latest backend'
+                bat 'docker push lxp-frontend:latest'
+                bat 'docker push lxp-backend:latest'
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh "kubectl apply -f k8s -n lxp"
-                sh "kubectl rollout restart deployment backend -n lxp"
-                sh "kubectl rollout restart deployment frontend -n lxp"
+                bat 'kubectl apply -f k8s/deployment.yaml'
             }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline finished'
+        }
+        failure {
+            echo 'Build failed!'
         }
     }
 }
