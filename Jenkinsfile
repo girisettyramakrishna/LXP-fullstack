@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_USERNAME = 'psmdocker123'
-        DOCKERHUB_TOKEN = credentials('dockerhub_token')
+    
         KUBECONFIG = 'C:\\Users\\ADMIN\\.kube\\config'
     }
 
@@ -33,7 +33,7 @@ pipeline {
 
         stage('Push Images') {
             steps {
-                bat "echo %DOCKERHUB_TOKEN% | docker login -u %DOCKERHUB_USERNAME% --password-stdin"
+                
                 bat "docker push %DOCKERHUB_USERNAME%/frontend_app:latest"
                 bat "docker push %DOCKERHUB_USERNAME%/backend_app:latest"
             }
@@ -48,3 +48,4 @@ pipeline {
         }
     }
 }
+
